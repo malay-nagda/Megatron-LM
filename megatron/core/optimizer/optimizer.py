@@ -1687,11 +1687,13 @@ class ChainedOptimizer(MegatronOptimizer):
                         use_decoupled_grad=use_decoupled_grad,
                     )
 
+            """
             if grad_norm > optimizer.config.grad_norm_skip_threshold and main_params:
                 log_single_rank(
                     logger, logging.INFO, "skipping grad norm because it's too large %s", grad_norm
                 )
                 should_skip_update = True
+            """
 
         # Count the zeros in the grads.
         num_zeros_in_grad = self.count_zeros() if self.config.log_num_zeros_in_grad else None

@@ -793,8 +793,9 @@ class PretrainConfigContainer(ConfigContainerBase):
             not isinstance(self.ddp, TorchFullyShardedDataParallelConfig)
             and not self.ddp.use_megatron_fsdp
             and self.optimizer.use_layer_wise_distributed_optimizer
-            and self.optimizer.use_layer_wise_param_layout
         )
+        if not isinstance(self.ddp, TorchFullyShardedDataParallelConfig):
+            self.ddp.use_layer_wise_param_layout = self.optimizer.use_layer_wise_param_layout
         if transformer is not None:
             transformer.fp8_param = self.ddp.fp8_param_gather
             transformer.fp4_param = self.ddp.fp4_param_gather

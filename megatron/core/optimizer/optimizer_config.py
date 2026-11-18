@@ -1,4 +1,4 @@
-# Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 
 import fnmatch
 import logging
@@ -380,7 +380,9 @@ class OptimizerConfig:
     that the standard distributed-optimizer path is not triggered."""
 
     use_layer_wise_param_layout: bool = True
-    """Use shard-aligned parameter layouts with the layer-wise distributed optimizer."""
+    """Use a padded layout for LayerWise-managed parameters. If false, use a compact
+    layout with whole-parameter ownership and all-reduced gradients. Scalar parameters
+    remain in DistributedOptimizer in both layouts."""
 
     overlap_param_gather: bool = False
     """If true, overlap param all-gather with forward compute. 
@@ -605,6 +607,30 @@ class OptimizerConfig:
         ckpt_format: str | None,
     ) -> None:
         """Check settings shared with DDP and checkpointing without modifying them."""
+        will_be_layer_wise = self.use_layer_wise_distributed_optimizer or (
+            self.optimizer not in ('sgd', 'adam')
+            and (self.use_distributed_optimizer or self.optimizer == 'dist_muon')
+        )
+        if will_be_layer_wise:
+            assert ddp_config.num_distributed_optimizer_instances == 1, (
+                "LayerWiseDistributedOptimizer requires "
+                "num_distributed_optimizer_instances == 1."
+            )
+            if not self.use_layer_wise_param_layout:
+                assert (
+                    not ddp_config.fp4_param_gather
+                ), "Compact LayerWise parameter gather does not support NVFP4 parameters."
+                if ddp_config.fp8_param_gather:
+                    assert self.fp8_recipe in ('mxfp8', 'blockwise'), (
+                        "Compact LayerWise FP8 parameter gather supports only mxfp8 and "
+                        f"blockwise recipes; got {self.fp8_recipe!r}."
+                    )
+                    if self.fp8_recipe == 'mxfp8':
+                        assert self.reuse_grad_buf_for_mxfp8_param_ag, (
+                            "Compact LayerWise MXFP8 parameter gather requires "
+                            "--reuse-grad-buf-for-mxfp8-param-ag."
+                        )
+
         if self.optimizer_cpu_offload:
             assert not ddp_config.fp8_param_gather or self.fp8_recipe == "delayed", (
                 "When `--fp8-param-gather` is enabled, the optimizer cpu offload "

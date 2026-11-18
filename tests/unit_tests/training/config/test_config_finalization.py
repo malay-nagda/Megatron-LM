@@ -271,10 +271,9 @@ def test_finalization_resolves_layer_wise_ddp_flag(
     layer_wise = optimizer in ("muon", "dist_muon")
     assert run_config.optimizer.use_layer_wise_distributed_optimizer is layer_wise
     assert run_config.optimizer.use_distributed_optimizer is (not layer_wise)
-    # Resolve the wrapper's reduce-scatter layout before model construction.
-    assert run_config.ddp.use_distributed_optimizer is (
-        not layer_wise or use_layer_wise_param_layout
-    )
+    # Adam remains byte-sharded while Muon independently selects compact or padded buffers.
+    assert run_config.ddp.use_distributed_optimizer
+    assert run_config.ddp.use_layer_wise_param_layout is use_layer_wise_param_layout
 
 
 @pytest.mark.parametrize(

@@ -2,6 +2,7 @@
 import pytest
 import torch
 
+from megatron.core.distributed import DistributedDataParallelConfig
 from megatron.core.optimizer import get_megatron_optimizer
 from megatron.core.optimizer.optimizer_config import OptimizerConfig, ParamKey, ParamPredicate
 
@@ -72,3 +73,38 @@ def test_paramkey_matches():
     #  it has the attribute.
     setattr(p_with_attr, "is_embedding_or_output_parameter", False)
     assert not has_attr.matches(p_with_attr, "interesting.bias")
+
+
+@pytest.mark.parametrize(
+    "ddp_changes, optimizer_changes, error",
+    [
+        ({}, {}, None),
+        ({"num_distributed_optimizer_instances": 2}, {}, "instances == 1"),
+        ({"fp4_param_gather": True}, {}, "NVFP4"),
+        ({}, {"fp8_recipe": "tensorwise"}, "only mxfp8 and blockwise"),
+        ({}, {"reuse_grad_buf_for_mxfp8_param_ag": False}, "requires"),
+    ],
+)
+def test_compact_layerwise_param_gather_validation(ddp_changes, optimizer_changes, error):
+    """Native config validation enforces compact gather's storage contract."""
+    ddp = DistributedDataParallelConfig(
+        **dict({"fp8_param_gather": True, "overlap_grad_reduce": True}, **ddp_changes)
+    )
+    optimizer = OptimizerConfig(
+        **dict(
+            {
+                "optimizer": "muon",
+                "use_layer_wise_distributed_optimizer": True,
+                "use_layer_wise_param_layout": False,
+                "fp8_recipe": "mxfp8",
+                "overlap_param_gather": True,
+                "reuse_grad_buf_for_mxfp8_param_ag": True,
+            },
+            **optimizer_changes,
+        )
+    )
+    if error:
+        with pytest.raises(AssertionError, match=error):
+            optimizer.validate_run(ddp_config=ddp, use_torch_fsdp2=False, ckpt_format="torch_dist")
+    else:
+        optimizer.validate_run(ddp_config=ddp, use_torch_fsdp2=False, ckpt_format="torch_dist")

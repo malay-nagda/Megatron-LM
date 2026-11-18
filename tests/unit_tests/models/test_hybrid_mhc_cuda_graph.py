@@ -132,7 +132,7 @@ def _expected_mhc_backend_calls(fused):
 
 
 @pytest.fixture(autouse=True)
-def _fresh_mhc_compile_cache(monkeypatch):
+def _fresh_mhc_compile_cache():
     """Compile the native mHC kernels afresh for every test in this file.
 
     mHC's native aggregate and post-BDA helpers use torch.compile and recompile per input
@@ -142,10 +142,13 @@ def _fresh_mhc_compile_cache(monkeypatch):
     test_pp_mhc_compatibility.py, start each test from an empty cache, and allow it enough
     recompiles to stay compiled.
     """
-    monkeypatch.setattr(torch._dynamo.config, "recompile_limit", 64)
-    torch.compiler.reset()
-    yield
-    torch.compiler.reset()
+    # Dynamo settings are virtual attributes; generic monkeypatch teardown can hide them.
+    with torch._dynamo.config.patch(recompile_limit=64):
+        torch.compiler.reset()
+        try:
+            yield
+        finally:
+            torch.compiler.reset()
 
 
 _ATTENTION_GRAPH_SPLIT = dict(
